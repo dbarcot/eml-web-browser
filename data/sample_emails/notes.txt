@@ -1,0 +1,3 @@
+Sample Emails for Testing
+This directory contains example email files for testing the EML viewer.
+You can replace these with your own .eml files.

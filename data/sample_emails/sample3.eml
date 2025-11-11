@@ -1,0 +1,43 @@
+From: support@service.com
+To: customer@email.com
+Subject: Your Support Ticket #12345
+Date: Fri, 5 Apr 2024 09:15:00 +0000
+Content-Type: multipart/alternative; boundary="boundary123"
+
+--boundary123
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+Dear Customer,
+
+Thank you for contacting our support team. Your ticket #12345 has been resolved.
+
+Issue: Login problems
+Resolution: Password reset completed
+Status: CLOSED
+
+If you have any further questions, please don't hesitate to reach out.
+
+Best regards,
+Support Team
+
+--boundary123
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+<html>
+<body>
+<h1>Support Ticket Resolved</h1>
+<p>Dear Customer,</p>
+<p>Thank you for contacting our support team. Your ticket <strong>#12345</strong> has been resolved.</p>
+<ul>
+<li><strong>Issue:</strong> Login problems</li>
+<li><strong>Resolution:</strong> Password reset completed</li>
+<li><strong>Status:</strong> CLOSED</li>
+</ul>
+<p>If you have any further questions, please don't hesitate to reach out.</p>
+<p>Best regards,<br>Support Team</p>
+</body>
+</html>
+
+--boundary123--

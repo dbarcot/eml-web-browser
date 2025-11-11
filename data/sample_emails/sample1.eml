@@ -1,0 +1,21 @@
+From: john.doe@example.com
+To: jane.smith@example.com
+Subject: Welcome to EML Viewer
+Date: Mon, 15 Jan 2024 10:30:00 +0000
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+Hello Jane,
+
+Welcome to the EML Viewer application! This is a sample email to demonstrate the functionality.
+
+You can view:
+- Email sender information
+- Subject lines
+- Dates
+- Full message content
+
+Feel free to add your own .eml files to any subdirectory under data/ folder.
+
+Best regards,
+John Doe

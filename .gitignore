@@ -1,0 +1,29 @@
+# User data - do not commit actual email files
+data/*
+!data/sample_emails/
+
+# Keep sample directory but ignore additional files users add
+data/sample_emails/*.eml
+!data/sample_emails/sample1.eml
+!data/sample_emails/sample2.eml
+!data/sample_emails/sample3.eml
+
+# Credentials - NEVER commit with real passwords
+auth.php
+
+# Keep the template
+!auth.php
+
+# Session files
+sessions/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
