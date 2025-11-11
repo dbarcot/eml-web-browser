@@ -369,6 +369,11 @@ function parseEmail($filePath) {
         // Single part - decode based on transfer encoding
         try {
             $body = decodeBody($bodyContent, $transferEncoding, $charset);
+
+            // If it's HTML, convert to plain text
+            if (stripos($contentType, 'text/html') !== false) {
+                $body = htmlToText($body);
+            }
         } catch (Exception $e) {
             error_log("Error decoding body: " . $e->getMessage());
             $body = "Error decoding email body: " . $e->getMessage();
@@ -441,7 +446,7 @@ function parseMultipartBody($content, $boundary) {
             $transferEncoding = $headers['content-transfer-encoding'] ?? '';
             $charset = extractCharset($headers['content-type']);
             $decoded = decodeBody($partContent, $transferEncoding, $charset);
-            return strip_tags($decoded);
+            return htmlToText($decoded);
         }
     }
 
@@ -539,6 +544,40 @@ function decodeBody($content, $encoding, $charset = 'UTF-8') {
     }
 
     return $decoded;
+}
+
+/**
+ * Convert HTML to plain text
+ */
+function htmlToText($html) {
+    // Replace common block elements with line breaks
+    $html = preg_replace('/<(br|BR)[\s\/]*>/i', "\n", $html);
+    $html = preg_replace('/<\/(div|DIV|p|P|tr|TR|h[1-6]|H[1-6])>/i', "\n", $html);
+
+    // Remove script and style tags and their content
+    $html = preg_replace('/<(script|style|SCRIPT|STYLE)[^>]*>.*?<\/\1>/is', '', $html);
+
+    // Remove all HTML tags
+    $text = strip_tags($html);
+
+    // Decode HTML entities
+    $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+    // Convert multiple spaces to single space
+    $text = preg_replace('/[ \t]+/', ' ', $text);
+
+    // Convert multiple newlines to maximum 2
+    $text = preg_replace('/\n{3,}/', "\n\n", $text);
+
+    // Trim whitespace from each line
+    $lines = explode("\n", $text);
+    $lines = array_map('trim', $lines);
+    $text = implode("\n", $lines);
+
+    // Remove empty lines at start and end
+    $text = trim($text);
+
+    return $text;
 }
 
 /**
