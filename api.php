@@ -180,8 +180,27 @@ function isValidDirectoryName($name) {
  * Validate file name
  */
 function isValidFileName($name) {
-    // Must end with .eml and contain only safe characters
-    return preg_match('/^[a-zA-Z0-9_-]+\.eml$/', $name) === 1;
+    // Must end with .eml
+    if (!preg_match('/\.eml$/i', $name)) {
+        return false;
+    }
+
+    // Block path traversal attempts
+    if (strpos($name, '..') !== false || strpos($name, '/') !== false || strpos($name, '\\') !== false) {
+        return false;
+    }
+
+    // Block null bytes
+    if (strpos($name, "\0") !== false) {
+        return false;
+    }
+
+    // Must not start with a dot (hidden files)
+    if (strpos($name, '.') === 0) {
+        return false;
+    }
+
+    return true;
 }
 
 /**
