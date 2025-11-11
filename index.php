@@ -578,8 +578,29 @@ if (!is_authenticated()) {
 
             showLoading();
             fetch(`api.php?action=get_email_content&dir=${encodeURIComponent(currentDirectory)}&file=${encodeURIComponent(email.filename)}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => {
+                            throw new Error(`HTTP ${response.status}: ${text}`);
+                        });
+                    }
+                    return response.text().then(text => {
+                        if (!text || text.trim() === '') {
+                            throw new Error('Empty response from server');
+                        }
+                        try {
+                            return JSON.parse(text);
+                        } catch (e) {
+                            console.error('Invalid JSON response:', text);
+                            throw new Error('Invalid JSON response: ' + text.substring(0, 100));
+                        }
+                    });
+                })
                 .then(data => {
+                    if (data.error) {
+                        throw new Error(data.message || data.error);
+                    }
+
                     // Show preview
                     document.getElementById('emailPreview').classList.add('visible');
 
@@ -602,7 +623,7 @@ if (!is_authenticated()) {
                 .catch(error => {
                     console.error('Error loading email content:', error);
                     hideLoading();
-                    alert('Error loading email content');
+                    alert('Error loading email: ' + error.message);
                 });
         }
 

@@ -1,4 +1,10 @@
 <?php
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 0); // Don't display errors in output (breaks JSON)
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/error.log');
+
 require_once 'auth.php';
 
 // Check authentication
@@ -163,9 +169,18 @@ function getEmailContent() {
         return;
     }
 
-    $email = parseEmail($filePath);
-
-    echo json_encode($email);
+    try {
+        $email = parseEmail($filePath);
+        echo json_encode($email);
+    } catch (Exception $e) {
+        error_log("Error parsing email $filePath: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'error' => 'Error parsing email',
+            'message' => 'Unable to parse email content. Check error.log for details.',
+            'file' => $file
+        ]);
+    }
 }
 
 /**
