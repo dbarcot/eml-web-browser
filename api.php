@@ -288,60 +288,100 @@ function parseEmail($filePath) {
  * Parse multipart email body (extract text/plain part)
  */
 function parseMultipartBody($content, $boundary) {
-    $parts = preg_split('/--' . preg_quote($boundary, '/') . '/', $content);
+    // Split by boundary
+    $parts = preg_split('/--' . preg_quote($boundary, '/') . '(?:--)?[\r\n]*/', $content);
 
     foreach ($parts as $part) {
-        if (empty(trim($part)) || strpos($part, '--') === 0) {
+        $part = trim($part);
+        if (empty($part)) {
             continue;
         }
 
-        // Split part headers and content
-        $partParts = preg_split('/\r?\n\r?\n/', $part, 2);
-        if (count($partParts) < 2) {
+        // Split part into headers and content
+        // Look for double line break (CRLF CRLF, LF LF, or CR CR)
+        if (preg_match('/^(.*?)(?:\r\n\r\n|\n\n|\r\r)(.*)$/s', $part, $matches)) {
+            $partHeaders = $matches[1];
+            $partContent = $matches[2];
+        } else {
             continue;
         }
 
-        $partHeaders = $partParts[0];
-        $partContent = $partParts[1];
+        // Parse part headers into array
+        $headers = parsePartHeaders($partHeaders);
 
         // Check if this is text/plain
-        if (stripos($partHeaders, 'text/plain') !== false) {
-            // Get transfer encoding from part headers
-            $transferEncoding = '';
-            if (preg_match('/Content-Transfer-Encoding:\s*(.+)/i', $partHeaders, $matches)) {
-                $transferEncoding = trim($matches[1]);
-            }
-
+        if (isset($headers['content-type']) && stripos($headers['content-type'], 'text/plain') !== false) {
+            $transferEncoding = $headers['content-transfer-encoding'] ?? '';
             return decodeBody($partContent, $transferEncoding);
         }
     }
 
     // If no text/plain part found, try text/html and strip tags
+    $parts = preg_split('/--' . preg_quote($boundary, '/') . '(?:--)?[\r\n]*/', $content);
+
     foreach ($parts as $part) {
-        if (empty(trim($part)) || strpos($part, '--') === 0) {
+        $part = trim($part);
+        if (empty($part)) {
             continue;
         }
 
-        $partParts = preg_split('/\r?\n\r?\n/', $part, 2);
-        if (count($partParts) < 2) {
+        if (preg_match('/^(.*?)(?:\r\n\r\n|\n\n|\r\r)(.*)$/s', $part, $matches)) {
+            $partHeaders = $matches[1];
+            $partContent = $matches[2];
+        } else {
             continue;
         }
 
-        $partHeaders = $partParts[0];
-        $partContent = $partParts[1];
+        $headers = parsePartHeaders($partHeaders);
 
-        if (stripos($partHeaders, 'text/html') !== false) {
-            $transferEncoding = '';
-            if (preg_match('/Content-Transfer-Encoding:\s*(.+)/i', $partHeaders, $matches)) {
-                $transferEncoding = trim($matches[1]);
-            }
-
+        if (isset($headers['content-type']) && stripos($headers['content-type'], 'text/html') !== false) {
+            $transferEncoding = $headers['content-transfer-encoding'] ?? '';
             $decoded = decodeBody($partContent, $transferEncoding);
             return strip_tags($decoded);
         }
     }
 
     return 'No text content found';
+}
+
+/**
+ * Parse MIME part headers
+ */
+function parsePartHeaders($headerText) {
+    $headers = [];
+    $lines = preg_split('/\r\n|\n|\r/', $headerText);
+    $currentHeader = '';
+    $currentValue = '';
+
+    foreach ($lines as $line) {
+        // Check if line is a continuation (starts with space or tab)
+        if (preg_match('/^[\s\t]+/', $line)) {
+            if ($currentHeader) {
+                $currentValue .= ' ' . trim($line);
+            }
+        } else {
+            // Save previous header
+            if ($currentHeader) {
+                $headers[strtolower($currentHeader)] = $currentValue;
+            }
+
+            // Parse new header
+            if (preg_match('/^([^:]+):\s*(.*)$/', $line, $matches)) {
+                $currentHeader = trim($matches[1]);
+                $currentValue = trim($matches[2]);
+            } else {
+                $currentHeader = '';
+                $currentValue = '';
+            }
+        }
+    }
+
+    // Save last header
+    if ($currentHeader) {
+        $headers[strtolower($currentHeader)] = $currentValue;
+    }
+
+    return $headers;
 }
 
 /**
