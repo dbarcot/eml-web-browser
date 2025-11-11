@@ -349,6 +349,7 @@ function parseEmail($filePath) {
     // Parse body
     $contentType = $headers['content-type'] ?? '';
     $transferEncoding = $headers['content-transfer-encoding'] ?? '';
+    $charset = extractCharset($contentType);
 
     // Check if multipart
     if (stripos($contentType, 'multipart') !== false) {
@@ -367,7 +368,7 @@ function parseEmail($filePath) {
     } else {
         // Single part - decode based on transfer encoding
         try {
-            $body = decodeBody($bodyContent, $transferEncoding);
+            $body = decodeBody($bodyContent, $transferEncoding, $charset);
         } catch (Exception $e) {
             error_log("Error decoding body: " . $e->getMessage());
             $body = "Error decoding email body: " . $e->getMessage();
@@ -413,7 +414,8 @@ function parseMultipartBody($content, $boundary) {
         // Check if this is text/plain
         if (isset($headers['content-type']) && stripos($headers['content-type'], 'text/plain') !== false) {
             $transferEncoding = $headers['content-transfer-encoding'] ?? '';
-            return decodeBody($partContent, $transferEncoding);
+            $charset = extractCharset($headers['content-type']);
+            return decodeBody($partContent, $transferEncoding, $charset);
         }
     }
 
@@ -437,7 +439,8 @@ function parseMultipartBody($content, $boundary) {
 
         if (isset($headers['content-type']) && stripos($headers['content-type'], 'text/html') !== false) {
             $transferEncoding = $headers['content-transfer-encoding'] ?? '';
-            $decoded = decodeBody($partContent, $transferEncoding);
+            $charset = extractCharset($headers['content-type']);
+            $decoded = decodeBody($partContent, $transferEncoding, $charset);
             return strip_tags($decoded);
         }
     }
@@ -486,24 +489,56 @@ function parsePartHeaders($headerText) {
 }
 
 /**
+ * Extract charset from Content-Type header
+ */
+function extractCharset($contentType) {
+    if (preg_match('/charset=["\']?([^"\';\s]+)["\']?/i', $contentType, $matches)) {
+        return strtoupper(trim($matches[1]));
+    }
+    return 'UTF-8'; // Default to UTF-8
+}
+
+/**
  * Decode email body based on transfer encoding
  */
-function decodeBody($content, $encoding) {
+function decodeBody($content, $encoding, $charset = 'UTF-8') {
     $encoding = strtolower(trim($encoding));
 
+    // Decode based on transfer encoding
     switch ($encoding) {
         case 'quoted-printable':
-            return quoted_printable_decode($content);
+            $decoded = quoted_printable_decode($content);
+            break;
 
         case 'base64':
-            return base64_decode($content);
+            $decoded = base64_decode($content);
+            break;
 
         case '7bit':
         case '8bit':
         case 'binary':
         default:
-            return $content;
+            $decoded = $content;
+            break;
     }
+
+    // Convert charset to UTF-8 if needed
+    $charset = strtoupper(trim($charset));
+    if ($charset !== 'UTF-8' && $charset !== '') {
+        $converted = @mb_convert_encoding($decoded, 'UTF-8', $charset);
+        if ($converted !== false) {
+            return $converted;
+        } else {
+            error_log("Failed to convert from $charset to UTF-8");
+            // Try iconv as fallback
+            $converted = @iconv($charset, 'UTF-8//IGNORE', $decoded);
+            if ($converted !== false) {
+                return $converted;
+            }
+        }
+    }
+
+    return $decoded;
 }
 
 /**
