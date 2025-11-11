@@ -264,11 +264,60 @@ if (!is_authenticated()) {
             color: #333;
         }
 
+        .email-selection-toolbar {
+            padding: 10px 20px;
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .selection-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .selection-btn:hover {
+            background: #5568d3;
+        }
+
+        .selection-btn.secondary {
+            background: #6c757d;
+        }
+
+        .selection-btn.secondary:hover {
+            background: #5a6268;
+        }
+
+        .selection-btn.primary {
+            background: #ff9800;
+        }
+
+        .selection-btn.primary:hover {
+            background: #e68900;
+        }
+
+        .selection-count {
+            color: #666;
+            font-size: 13px;
+        }
+
         .email-item {
             padding: 15px 20px;
             border-bottom: 1px solid #eee;
             cursor: pointer;
             transition: background 0.2s;
+            position: relative;
+            display: flex;
+            align-items: center;
         }
 
         .email-item:hover {
@@ -278,6 +327,27 @@ if (!is_authenticated()) {
         .email-item.active {
             background: #e8eaf6;
             border-left: 3px solid #667eea;
+        }
+
+        .email-item-checkbox {
+            margin-right: 10px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            display: none;
+        }
+
+        .email-item-checkbox.visible {
+            display: block;
+        }
+
+        .email-item-content {
+            flex: 1;
+        }
+
+        .email-item.selected {
+            background: #fff3e0;
+            border-left: 3px solid #ff9800;
         }
 
         .email-sender {
@@ -411,6 +481,9 @@ if (!is_authenticated()) {
             display: block;
         }
     </style>
+
+    <!-- jsPDF library for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <!-- Header -->
@@ -437,6 +510,15 @@ if (!is_authenticated()) {
         <!-- Email List -->
         <div class="email-list" id="emailList">
             <div class="email-list-header">Emails</div>
+            <div class="email-selection-toolbar" id="selectionToolbar" style="display: none;">
+                <button class="selection-btn" onclick="toggleSelectMode()">Select Emails</button>
+                <button class="selection-btn secondary" id="selectAllBtn" onclick="selectAll()" style="display: none;">Select All</button>
+                <button class="selection-btn secondary" id="clearBtn" onclick="clearSelection()" style="display: none;">Clear</button>
+                <button class="selection-btn primary" id="printBtn" onclick="printSelectedEmails()" style="display: none;">
+                    Print Selected (<span id="selectedCount">0</span>)
+                </button>
+                <span class="selection-count" id="selectionCount" style="display: none;"></span>
+            </div>
             <div id="emailItems"></div>
         </div>
 
@@ -547,16 +629,32 @@ if (!is_authenticated()) {
                     emails.forEach((email, index) => {
                         const item = document.createElement('div');
                         item.className = 'email-item';
-                        item.onclick = () => viewEmail(index);
+                        item.dataset.index = index;
 
-                        item.innerHTML = `
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'email-item-checkbox';
+                        checkbox.onclick = (e) => {
+                            e.stopPropagation();
+                            toggleEmailSelection(index);
+                        };
+
+                        const content = document.createElement('div');
+                        content.className = 'email-item-content';
+                        content.onclick = () => viewEmail(index);
+                        content.innerHTML = `
                             <div class="email-sender">${escapeHtml(email.from)}</div>
                             <div class="email-subject">${escapeHtml(email.subject)}</div>
                             <div class="email-date">${escapeHtml(email.date)}</div>
                         `;
 
+                        item.appendChild(checkbox);
+                        item.appendChild(content);
                         emailItems.appendChild(item);
                     });
+
+                    // Show selection toolbar
+                    document.getElementById('selectionToolbar').style.display = 'flex';
 
                     hideLoading();
                 })
@@ -643,6 +741,248 @@ if (!is_authenticated()) {
         // Logout
         function logout() {
             window.location.href = 'logout.php';
+        }
+
+        // Selection mode state
+        let selectMode = false;
+        let selectedEmails = new Set();
+
+        // Toggle select mode
+        function toggleSelectMode() {
+            selectMode = !selectMode;
+            const checkboxes = document.querySelectorAll('.email-item-checkbox');
+            const selectAllBtn = document.getElementById('selectAllBtn');
+            const clearBtn = document.getElementById('clearBtn');
+
+            checkboxes.forEach(cb => {
+                if (selectMode) {
+                    cb.classList.add('visible');
+                } else {
+                    cb.classList.remove('visible');
+                    cb.checked = false;
+                }
+            });
+
+            if (selectMode) {
+                selectAllBtn.style.display = 'inline-block';
+                clearBtn.style.display = 'inline-block';
+                clearSelection();
+            } else {
+                selectAllBtn.style.display = 'none';
+                clearBtn.style.display = 'none';
+                document.getElementById('printBtn').style.display = 'none';
+                selectedEmails.clear();
+            }
+        }
+
+        // Toggle email selection
+        function toggleEmailSelection(index) {
+            const item = document.querySelector(`.email-item[data-index="${index}"]`);
+            const checkbox = item.querySelector('.email-item-checkbox');
+
+            if (checkbox.checked) {
+                selectedEmails.add(index);
+                item.classList.add('selected');
+            } else {
+                selectedEmails.delete(index);
+                item.classList.remove('selected');
+            }
+
+            updateSelectionCount();
+        }
+
+        // Select all emails
+        function selectAll() {
+            selectedEmails.clear();
+            const checkboxes = document.querySelectorAll('.email-item-checkbox');
+            checkboxes.forEach((cb, index) => {
+                cb.checked = true;
+                selectedEmails.add(index);
+                const item = document.querySelector(`.email-item[data-index="${index}"]`);
+                if (item) item.classList.add('selected');
+            });
+            updateSelectionCount();
+        }
+
+        // Clear selection
+        function clearSelection() {
+            selectedEmails.clear();
+            const checkboxes = document.querySelectorAll('.email-item-checkbox');
+            checkboxes.forEach((cb, index) => {
+                cb.checked = false;
+                const item = document.querySelector(`.email-item[data-index="${index}"]`);
+                if (item) item.classList.remove('selected');
+            });
+            updateSelectionCount();
+        }
+
+        // Update selection count
+        function updateSelectionCount() {
+            const count = selectedEmails.size;
+            const printBtn = document.getElementById('printBtn');
+            const selectedCountSpan = document.getElementById('selectedCount');
+
+            selectedCountSpan.textContent = count;
+
+            if (count > 0) {
+                printBtn.style.display = 'inline-block';
+            } else {
+                printBtn.style.display = 'none';
+            }
+        }
+
+        // Print selected emails to PDF
+        async function printSelectedEmails() {
+            if (selectedEmails.size === 0) {
+                alert('Please select at least one email');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                // Load jsPDF
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                // Fetch all selected emails
+                const emailPromises = Array.from(selectedEmails).sort((a, b) => a - b).map(index =>
+                    fetch(`api.php?action=get_email_content&dir=${encodeURIComponent(currentDirectory)}&file=${encodeURIComponent(emails[index].filename)}`)
+                        .then(response => response.json())
+                );
+
+                const emailsData = await Promise.all(emailPromises);
+
+                // Get directory label
+                const dirLabel = document.getElementById('currentDirectory').textContent || currentDirectory;
+
+                // Generate PDF
+                let pageCount = 0;
+
+                for (let i = 0; i < emailsData.length; i++) {
+                    if (i > 0) {
+                        doc.addPage();
+                    }
+                    pageCount++;
+
+                    const emailData = emailsData[i];
+                    let yPos = 20;
+
+                    // Header separator
+                    doc.setFontSize(10);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('═'.repeat(80), 15, yPos);
+                    yPos += 7;
+
+                    // Email number
+                    doc.setFontSize(12);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`EMAIL ${i + 1} of ${emailsData.length}`, 15, yPos);
+                    yPos += 7;
+
+                    // Separator
+                    doc.setFontSize(10);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('═'.repeat(80), 15, yPos);
+                    yPos += 10;
+
+                    // Email headers
+                    doc.setFontSize(11);
+                    doc.setFont('helvetica', 'bold');
+
+                    // From
+                    doc.text('From:', 15, yPos);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(emailData.from, 40, yPos, { maxWidth: 155 });
+                    yPos += 7;
+
+                    // To
+                    if (emailData.to) {
+                        doc.setFont('helvetica', 'bold');
+                        doc.text('To:', 15, yPos);
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(emailData.to, 40, yPos, { maxWidth: 155 });
+                        yPos += 7;
+                    }
+
+                    // CC
+                    if (emailData.cc) {
+                        doc.setFont('helvetica', 'bold');
+                        doc.text('CC:', 15, yPos);
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(emailData.cc, 40, yPos, { maxWidth: 155 });
+                        yPos += 7;
+                    }
+
+                    // Date
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Date:', 15, yPos);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(emailData.date, 40, yPos, { maxWidth: 155 });
+                    yPos += 7;
+
+                    // Subject
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Subject:', 15, yPos);
+                    doc.setFont('helvetica', 'normal');
+                    const subjectLines = doc.splitTextToSize(emailData.subject, 155);
+                    doc.text(subjectLines, 40, yPos);
+                    yPos += 7 * subjectLines.length;
+
+                    yPos += 5;
+
+                    // Separator
+                    doc.setFontSize(10);
+                    doc.text('═'.repeat(80), 15, yPos);
+                    yPos += 10;
+
+                    // Email body
+                    doc.setFontSize(9);
+                    doc.setFont('courier', 'normal');
+                    const bodyLines = doc.splitTextToSize(emailData.body || '(No content)', 180);
+
+                    for (let line of bodyLines) {
+                        if (yPos > 270) {
+                            doc.addPage();
+                            yPos = 20;
+                        }
+                        doc.text(line, 15, yPos);
+                        yPos += 5;
+                    }
+
+                    // Footer
+                    doc.setFontSize(8);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(100);
+                    yPos = 280;
+                    doc.text('─'.repeat(90), 15, yPos);
+                    yPos += 5;
+                    doc.text(`Source: ${dirLabel}`, 15, yPos);
+                    const attachmentText = emailData.attachments > 0
+                        ? `${emailData.attachments} attachment${emailData.attachments > 1 ? 's' : ''} detected`
+                        : 'No attachments';
+                    doc.text(`Attachments: ${attachmentText}`, 15, yPos + 4);
+                    doc.text(`Generated: ${new Date().toLocaleString()}`, 15, yPos + 8);
+                    doc.setTextColor(0);
+                }
+
+                // Generate filename
+                const timestamp = new Date().toISOString().split('T')[0];
+                const filename = emailsData.length === 1
+                    ? `Email - ${emailsData[0].subject.substring(0, 50)} - ${timestamp}.pdf`
+                    : `Emails - ${dirLabel} - ${emailsData.length} emails - ${timestamp}.pdf`;
+
+                // Save PDF
+                doc.save(filename);
+
+                hideLoading();
+                alert(`PDF generated successfully!\n${emailsData.length} email${emailsData.length > 1 ? 's' : ''} exported.`);
+
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+                hideLoading();
+                alert('Error generating PDF: ' + error.message);
+            }
         }
 
         // Escape HTML

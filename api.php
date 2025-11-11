@@ -350,6 +350,7 @@ function parseEmail($filePath) {
     $contentType = $headers['content-type'] ?? '';
     $transferEncoding = $headers['content-transfer-encoding'] ?? '';
     $charset = extractCharset($contentType);
+    $attachmentCount = 0;
 
     // Check if multipart
     if (stripos($contentType, 'multipart') !== false) {
@@ -358,6 +359,8 @@ function parseEmail($filePath) {
             $boundary = $matches[1];
             try {
                 $body = parseMultipartBody($bodyContent, $boundary);
+                // Count attachments
+                $attachmentCount = countAttachments($bodyContent, $boundary);
             } catch (Exception $e) {
                 error_log("Error parsing multipart body: " . $e->getMessage());
                 $body = "Error parsing multipart email: " . $e->getMessage();
@@ -387,7 +390,8 @@ function parseEmail($filePath) {
         'cc' => $headers['cc'] ?? '',
         'bcc' => $headers['bcc'] ?? '',
         'date' => $headers['date'] ?? 'Unknown Date',
-        'body' => $body
+        'body' => $body,
+        'attachments' => $attachmentCount
     ];
 }
 
@@ -451,6 +455,54 @@ function parseMultipartBody($content, $boundary) {
     }
 
     return 'No text content found';
+}
+
+/**
+ * Count attachments in multipart email
+ */
+function countAttachments($content, $boundary) {
+    $count = 0;
+    $parts = preg_split('/--' . preg_quote($boundary, '/') . '(?:--)?[\r\n]*/', $content);
+
+    foreach ($parts as $part) {
+        $part = trim($part);
+        if (empty($part)) {
+            continue;
+        }
+
+        // Split part into headers and content
+        if (preg_match('/^(.*?)(?:\r\n\r\n|\n\n|\r\r)(.*)$/s', $part, $matches)) {
+            $partHeaders = $matches[1];
+        } else {
+            continue;
+        }
+
+        // Parse part headers
+        $headers = parsePartHeaders($partHeaders);
+
+        // Check if this part is an attachment (not text/plain or text/html)
+        if (isset($headers['content-type'])) {
+            $contentType = strtolower($headers['content-type']);
+
+            // Skip text parts and multipart containers
+            if (stripos($contentType, 'text/plain') === false &&
+                stripos($contentType, 'text/html') === false &&
+                stripos($contentType, 'multipart/') === false) {
+                $count++;
+            }
+
+            // Also check for Content-Disposition: attachment
+            if (isset($headers['content-disposition']) &&
+                stripos($headers['content-disposition'], 'attachment') !== false) {
+                // Already counted above if not text, but this ensures we catch inline images marked as attachments
+                if (stripos($contentType, 'text/') === 0) {
+                    $count++;
+                }
+            }
+        }
+    }
+
+    return $count;
 }
 
 /**
